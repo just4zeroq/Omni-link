@@ -683,6 +683,33 @@ func TestVolcOutputConv(t *testing.T) {
 	t.Logf("Output conv Responses→Chat: success")
 }
 
+func TestVolcOutputConvOpenAIToClaude(t *testing.T) {
+	key := volcKey(t)
+	e := executor.GetByProvider("volcengine")
+	info := &executor.RequestInfo{
+		UpstreamFormat: translator.FormatOpenAI,
+		InboundFormat:  translator.FormatOpenAI,
+		ClientFormat:   translator.FormatClaude,
+		Model: volcModel,
+		ApiKey: key,
+		BaseURL: volcBase,
+	}
+	b, _ := json.Marshal(map[string]any{
+		"model":    volcModel,
+		"messages": []map[string]any{{"role": "user", "content": "Say hello"}},
+	})
+	resp, err := execReq(e, info, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	mustUnmarshal(t, resp, &m)
+	if _, ok := m["content"]; !ok {
+		t.Fatalf("no content (expected Claude format): %s", string(resp))
+	}
+	t.Logf("Output conv OpenAI->Claude: success")
+}
+
 // ========================================================================
 // Plan auto-resolve via ExecuteStream
 // ========================================================================
