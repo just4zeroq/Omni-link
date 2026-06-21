@@ -77,7 +77,22 @@ func init() { text.Register("claude", &ClaudeExecutor{}) }
 **Image/Audio/Video executors** follow same pattern with modality-specific methods:
 - `ImageExecutor` — `TextToImage`, `ImageToImage`, `GetTask`
 - `AudioExecutor` — `TextToSpeech`, `SpeechToText`, `MusicGenerate`, `GetTask`, `ListVoices`
-- `VideoExecutor` — `TextToVideo`, `ImageToVideo`, `VideoToVideo`, `ExtendVideo`, `EditVideo`, `GetTask`
+- `VideoExecutor` — `TextToVideo`, `ImageToVideo`, `VideoToVideo`, `ExtendVideo`, `EditVideo`, `CreateCharacter`, `GetTask`
+
+**TTS streaming:**
+`TextToSpeech` returns `*AudioStream` (unified sync/streaming interface):
+
+```go
+type AudioStream struct {
+    Chunk       <-chan AudioChunk  // one chunk (sync) or many (streaming)
+    ContentType string             // "audio/mpeg"
+    Format      string             // "mp3", "wav"
+}
+func (s *AudioStream) Collect() (*AudioResult, error)  // drain to single result
+func NewStreamFromResult(r *AudioResult) *AudioStream   // wrap sync result as 1-chunk stream
+```
+
+Sync providers call `NewStreamFromResult()` once. Streaming providers push chunks to the channel as they arrive. Callers choose between `range stream.Chunk` (streaming) or `stream.Collect()` (sync convenience).
 
 **Implemented text executors:**
 - `claude` — native Claude, SSE streaming Claude↔OpenAI
@@ -85,6 +100,45 @@ func init() { text.Register("claude", &ClaudeExecutor{}) }
 - `gemini` — native Gemini, converts via OpenAI intermediate on request/response
 - `deepseek` — dual native (OpenAI + Claude), custom thinking/reasoning injection
 - `volcengine` — dual native (OpenAI Chat + OpenAI Responses), SSE passthrough
+
+**Implemented image executors:**
+| Executor | T2I | I2I | Pattern | Notes |
+|----------|-----|-----|---------|-------|
+| `gptimage` | ✅ | ✅ (edits) | Sync | OpenAI GPT Image 2 / DALL-E, POST /v1/images/generations + edits |
+| `qwen` | ✅ | ✅ | Async polling | Alibaba DashScope, models qwen-max/plus/turbo |
+| `nanobanana` | ✅ | ❌ | Sync | OpenAI-compatible, T2I only |
+| `zimage` | ✅ | ❌ | Sync | OpenAI-compatible, T2I only |
+| `wan` | ✅ | ✅ | Async polling | Alibaba DashScope wan2.5-t2i/i2i |
+| `seedream` | ✅ | ❌ | Async polling | ByteDance via fal.ai, seedream-5.0/4.5/4.0 |
+| `midjourney` | ✅ | ❌ | Async polling | POST /v1/imagine → GET /v1/task/{id}/fetch |
+
+**Implemented audio executors:**
+| Executor | TTS | STT | Music | Pattern | Notes |
+|----------|-----|-----|-------|---------|-------|
+| `openai` | ✅ | ✅ | ❌ | Sync/multipart | OpenAI /v1/audio/speech + /v1/audio/transcriptions |
+| `elevenlabs` | ✅ | ❌ | ❌ | Sync | POST /v1/text-to-speech/{voice_id}, ListVoices |
+| `cosyvoice` | ✅ | ❌ | ❌ | Sync/URL | DashScope SpeechSynthesizer, direct audio + URL response |
+| `suno` | ❌ | ❌ | ✅ | Async polling | Music gen via relay, suno-v5/chirp-v5 |
+| `funasr` | ❌ | ✅ | ❌ | Sync + async | DashScope async + self-hosted OpenAI-compatible sync |
+| `azure` | ✅ | ✅ | ❌ | Sync/SSML | Azure Speech, region-based URL |
+| `playht` | ✅ | ❌ | ❌ | Sync | POST /v2/tts/stream, X-User-ID + Bearer |
+| `cartesia` | ✅ | ❌ | ❌ | Sync | Sonic-3 ultra-low-latency via /tts/bytes |
+| `fishaudio` | ✅ | ❌ | ❌ | Sync | /v1/tts, zero-shot voice clone |
+
+**Implemented video executors (all async, all poll via GetTask):**
+| Executor | T2V | I2V | V2V | Extend | Edit | Notes |
+|----------|-----|-----|-----|--------|------|-------|
+| `sora` | ✅ | ❌ | ❌ | ❌ | ✅ | OpenAI Sora (deprecating Sep 2026) |
+| `kling` | ✅ | ✅ | ❌ | ❌ | ❌ | Kuaishou, JWT auth |
+| `wan` | ✅ | ✅ | ❌ | ❌ | ❌ | Alibaba DashScope wan2.7-t2v/i2v |
+| `grok` | ✅ | ❌ | ❌ | ❌ | ❌ | xAI Grok, cheapest provider |
+| `runway` | ✅ | ✅ | ❌ | ✅ | ✅ | Runway Gen-4, X-Runway-Version |
+| `seedance` | ✅ | ❌ | ❌ | ❌ | ❌ | ByteDance via fal.ai, 2K support |
+| `hailuo` | ✅ | ❌ | ❌ | ❌ | ❌ | MiniMax |
+| `pika` | ✅ | ✅ | ✅ | ✅ | ✅ | Pika Labs via fal.ai, pikaffects |
+| `luma` | ✅ | ✅ | ❌ | ❌ | ❌ | Luma Ray3.2 via fal.ai |
+| `omnihuman` | ❌ | ✅ | ❌ | ❌ | ❌ | ByteDance avatar (image+audio→video) |
+| `happyhorse` | ✅ | ✅ | ❌ | ❌ | ❌ | Alibaba DashScope, same infra as Wan |
 
 **Format planning:**
 `Plan(input, output, capabilities)` selects optimal upstream format minimizing conversions (score = input mismatch + output mismatch). Prefers format matching output format on tie.
@@ -153,6 +207,8 @@ Volcengine (Doubao/火山引擎) tests cover:
 - **Add new text executor**: create `executor/text/<name>.go` with `init()` Registration, implement `Executor` interface, add vendor-specific hooks
 - **Add new image executor**: create `executor/image/<name>.go` with `init()` RegisterImage, implement `ImageExecutor` interface
 - **Add new audio executor**: create `executor/audio/<name>.go` with `init()` RegisterAudio, implement `AudioExecutor` interface
+  - TTS: return `audio.NewStreamFromResult(&audio.AudioResult{...})` for sync, or push to `AudioStream.Chunk` for streaming
+  - STT: return `*audio.STTResult` directly (no streaming — use sync pattern)
 - **Add new video executor**: create `executor/video/<name>.go` with `init()` RegisterVideo, implement `VideoExecutor` interface
 - **Add new format**: define types in new `translator/<name>.go`, add `Format` constant, implement `convertDirect` cases in `conv.go`
 - **Add new channel mapping**: add `ProviderType` constant in `model/model.go`, add `ResolveProtocol` case

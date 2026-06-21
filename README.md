@@ -21,7 +21,7 @@ textexec.ExecuteStream(ctx, executor, info, body, callback)
 [![License](https://img.shields.io/badge/License-MIT-000000?style=flat-square)](LICENSE)
 [![Zero Deps](https://img.shields.io/badge/Dependencies-Zero-6366f1?style=flat-square)](go.mod)
 
-> **Status**: Text protocol translation ✅ | Image/Audio/Video framework ✅ | Provider implementations 🚧
+> **Status**: Text protocol translation ✅ | Image providers ✅ | Audio providers ✅ | Video providers ✅
 
 ---
 
@@ -30,9 +30,9 @@ textexec.ExecuteStream(ctx, executor, info, body, callback)
 | Category | Status | Provider Types |
 |---|---|---|
 | **🔤 Text** | ✅ Complete | OpenAI, Claude, Gemini, DeepSeek, Volcengine + 35+ more |
-| **🖼️ Image** | 🚧 Providers WIP | GPT Image 2, Midjourney, Seedream, Qwen, Nano Banana, Z Image, Wan2.5 |
-| **🎵 Audio** | 🚧 Providers WIP | OpenAI TTS/STT, ElevenLabs, Azure, PlayHT, Cartesia, Fish Audio, CosyVoice, FunASR, Suno |
-| **🎬 Video** | 🚧 Providers WIP | Sora, Kling, Runway, Seedance, Hailuo, Pika, Wan, Luma, Grok, OmniHuman, HappyHorse |
+| **🖼️ Image** | ✅ Complete | GPT Image 2, Midjourney, Seedream, Qwen, Nano Banana, Z Image, Wan2.5 |
+| **🎵 Audio** | ✅ Complete | OpenAI TTS/STT, ElevenLabs, Azure, PlayHT, Cartesia, Fish Audio, CosyVoice, FunASR, Suno |
+| **🎬 Video** | ✅ Complete | Sora, Kling, Runway, Seedance, Hailuo, Pika, Wan, Luma, Grok, OmniHuman, HappyHorse |
 
 ---
 
@@ -69,6 +69,38 @@ func main() {
     }
     textexec.ExecuteStream(ctx, e, info, body, callback)
 }
+```
+
+### Image / Audio / Video Quick Start
+
+```go
+import (
+    imageexec "github.com/just4zeroq/Omni-link/executor/image"
+    audioexec "github.com/just4zeroq/Omni-link/executor/audio"
+    videoexec "github.com/just4zeroq/Omni-link/executor/video"
+)
+
+// Image generation (7 providers)
+imgExec, _ := imageexec.GetImage("gptimage")
+result, _ := imgExec.TextToImage(&imageexec.TextToImageRequest{
+    Prompt: "A cat wearing a hat", Model: "dall-e-3",
+    N: 1, Size: "1024x1024",
+})
+
+// TTS with unified streaming (9 audio providers)
+audioExec, _ := audioexec.GetAudio("cartesia")
+stream, _ := audioExec.TextToSpeech(&audioexec.TTSRequest{
+    Input: "Hello world",
+    Voice: "a0e41e7a-6b41-4b50-9b09-64b0e0d717f5",
+})
+result, _ := stream.Collect() // or range stream.Chunk for streaming
+
+// Video generation (11 providers, all async)
+videoExec, _ := videoexec.GetVideo("kling")
+task, _ := videoExec.TextToVideo(&videoexec.TextToVideoRequest{
+    Prompt: "A rocket launching",
+})
+// Poll: videoExec.GetTask(task.ID)
 ```
 
 ---
@@ -114,12 +146,22 @@ Unsupported pairs auto-fallback via OpenAI intermediate hub.
                              │
 ┌────────────────────────────▼─────────────────────────────────────┐
 │                         executor/                                 │
-│  Text executors (executor/text/)                              │
-│  ┌────────┬────────┬────────┬──────────┬────────────┐            │
-│  │ Claude │ OpenAI │ Gemini │ DeepSeek │ Volcengine │            │
-│  │ Cl     │ OAI    │ GEM    │ OAI+Cl   │ OAI+RSP    │            │
-│  └────────┴────────┴────────┴──────────┴────────────┘            │
-│  Image/Audio/Video executors: executor/{image,audio,video}/     │
+│  ┌─────────────── text/ ─────────────────────────────────────┐    │
+│  │ Claude │ OpenAI │ Gemini │ DeepSeek │ Volcengine          │    │
+│  │ Cl     │ OAI    │ GEM    │ OAI+Cl   │ OAI+RSP            │    │
+│  └───────────────────────────────────────────────────────────┘    │
+│  ┌─────────────── image/ ──────────────────────────────────────┐  │
+│  │ GPT Image │ Qwen │ NanoBanana │ ZImage │ Wan │ Seedream    │  │
+│  │ Midjourney                                                  │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│  ┌─────────────── audio/ ─────────────────────────────────────┐  │
+│  │ OpenAI │ ElevenLabs │ CosyVoice │ Suno │ FunASR │ Azure   │  │
+│  │ PlayHT │ Cartesia │ FishAudio                              │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│  ┌─────────────── video/ ─────────────────────────────────────┐  │
+│  │ Sora │ Kling │ Wan │ Grok │ Runway │ Seedance │ Hailuo    │  │
+│  │ Pika │ Luma │ OmniHuman │ HappyHorse                       │  │
+│  └───────────────────────────────────────────────────────────┘  │
 │  Plan() → optimal upstream format (score-based)                  │
 │  SSE stream converters: Claude↔OpenAI (bidirectional)            │
 └──────────────────────────────────────────────────────────────────┘
@@ -143,9 +185,12 @@ Unsupported pairs auto-fallback via OpenAI intermediate hub.
   - `Register("name", &Executor{})` — plugin registry via init()
   - `Plan(in, out, endpoints)` — upstream format selection (score: input+output mismatch)
   - `RequestInfo.UpstreamFormat` — zero-value triggers Plan; 4-level override
-- Image: `executor/image` — `ImageExecutor` interface for image generation
-- Audio: `executor/audio` — `AudioExecutor` interface for TTS/STT/music
-- Video: `executor/video` — `VideoExecutor` interface for video generation
+- Image: `executor/image` — `ImageExecutor` interface (TextToImage, ImageToImage, GetTask)
+  - Sync GPT Image, async polling for Midjourney/Qwen/Wan/Seedream
+- Audio: `executor/audio` — `AudioExecutor` interface (TextToSpeech/*AudioStream*, SpeechToText, MusicGenerate, GetTask, ListVoices)
+  - TTS returns `*AudioStream` — one chunk sync vs multi-chunk streaming
+- Video: `executor/video` — `VideoExecutor` interface (TextToVideo...+GetTask)
+  - All video is async polling
 
 ---
 
@@ -172,6 +217,74 @@ Unsupported pairs auto-fallback via OpenAI intermediate hub.
 - Bot model routing (`bot-` prefix → `/api/v3/bots/chat/completions`)
 - `stream_options: {"include_usage": true}` injection
 - 32 tests: 3-model Chat, Responses, streaming, 10-way conversion, Plan, tools, params
+
+---
+
+## Provider Implementations — Image
+
+| Executor | T2I | I2I | Pattern | Auth | Notes |
+|----------|-----|-----|---------|------|-------|
+| **GPT Image** | ✅ | ✅(edits) | Sync | Bearer | OpenAI DALL-E / GPT Image 2 |
+| **Qwen Image** | ✅ | ✅ | Async | Bearer | DashScope qwen-max/plus/turbo |
+| **NanoBanana** | ✅ | ❌ | Sync | Bearer | OpenAI-compatible |
+| **Z Image** | ✅ | ❌ | Sync | Bearer | OpenAI-compatible |
+| **Wan** | ✅ | ✅ | Async | Bearer | DashScope wan2.5-t2i/i2i |
+| **Seedream** | ✅ | ❌ | Async | Bearer | fal.ai, 5.0/4.5/4.0 |
+| **Midjourney** | ✅ | ❌ | Async | Bearer | /v1/imagine → poll |
+
+---
+
+## Provider Implementations — Audio
+
+| Executor | TTS | STT | Music | Pattern | Notes |
+|----------|-----|-----|-------|---------|-------|
+| **OpenAI** | ✅ | ✅ | ❌ | Sync | /v1/audio/speech + transcriptions |
+| **ElevenLabs** | ✅ | ❌ | ❌ | Sync | POST /v1/text-to-speech/{voice_id} |
+| **CosyVoice** | ✅ | ❌ | ❌ | Sync/URL | DashScope SpeechSynthesizer |
+| **Suno** | ❌ | ❌ | ✅ | Async | Music gen via relay |
+| **FunASR** | ❌ | ✅ | ❌ | Sync+Async | DashScope + self-hosted |
+| **Azure** | ✅ | ✅ | ❌ | Sync | SSML-TTS + REST STT |
+| **PlayHT** | ✅ | ❌ | ❌ | Sync | /v2/tts/stream |
+| **Cartesia** | ✅ | ❌ | ❌ | Sync | Sonic-3 ultra-low-latency |
+| **Fish Audio** | ✅ | ❌ | ❌ | Sync | Zero-shot voice clone |
+
+### TTS Streaming
+
+`TextToSpeech` returns `*AudioStream` — unified sync/streaming interface:
+
+```go
+stream, _ := tts.TextToSpeech(req)
+
+// Streaming: iterate chunks as they arrive
+for chunk := range stream.Chunk {
+    audioSink.Write(chunk.Data)
+}
+
+// Or sync convenience: drain to single result
+result, _ := stream.Collect() // *AudioResult with full audio bytes
+```
+
+Sync providers wrap result with `audio.NewStreamFromResult()`. Streaming providers push chunks to channel. Caller decides pattern.
+
+---
+
+## Provider Implementations — Video
+
+All video providers are **async** — return pending task, poll via `GetTask`:
+
+| Executor | T2V | I2V | V2V | Extend | Edit | Notes |
+|----------|-----|-----|-----|--------|------|-------|
+| **Sora** | ✅ | ❌ | ❌ | ❌ | ✅ | OpenAI (deprecating Sep 2026) |
+| **Kling** | ✅ | ✅ | ❌ | ❌ | ❌ | Kuaishou, JWT auth |
+| **Wan** | ✅ | ✅ | ❌ | ❌ | ❌ | DashScope wan2.7 |
+| **Grok** | ✅ | ❌ | ❌ | ❌ | ❌ | xAI, cheapest |
+| **Runway** | ✅ | ✅ | ❌ | ✅ | ✅ | Gen-4, X-Runway-Version |
+| **Seedance** | ✅ | ❌ | ❌ | ❌ | ❌ | ByteDance via fal.ai |
+| **Hailuo** | ✅ | ❌ | ❌ | ❌ | ❌ | MiniMax |
+| **Pika** | ✅ | ✅ | ✅ | ✅ | ✅ | fal.ai, pikaffects |
+| **Luma** | ✅ | ✅ | ❌ | ❌ | ❌ | Ray3.2 via fal.ai |
+| **OmniHuman** | ❌ | ✅ | ❌ | ❌ | ❌ | Bytedance avatar (img+audio→video) |
+| **HappyHorse** | ✅ | ✅ | ❌ | ❌ | ❌ | DashScope, same infra as Wan |
 
 ---
 
@@ -216,18 +329,26 @@ Omni-link/
 │   ├── gemini.go             # Gemini type defs
 │   └── responses.go          # Responses API type defs
 ├── executor/
-│   ├── executor.go           # Executor interface, RequestInfo, Plan()
-│   ├── registry.go           # Plugin registry
-│   ├── shared.go             # Helpers (ReplaceModelField, etc.)
-│   ├── stream_exec.go        # Stream execution pipeline
-│   ├── streams.go            # SSE converters (Claude↔OpenAI)
-│   ├── claude/               # Claude executor
-│   ├── openai/               # OpenAI executor
-│   ├── gemini/               # Gemini executor
-│   ├── deepseek/             # DeepSeek (27 tests)
-│   └── volcengine/           # Volcengine/Doubao (32 tests)
-├── CLAUDE.md                 # Dev conventions
-├── go.mod                    # Go 1.23, zero external deps
+│   ├── text/
+│   │   ├── executor.go        # Executor interface, RequestInfo, Plan()
+│   │   ├── registry.go        # Plugin registry
+│   │   ├── shared.go          # Helpers (ReplaceModelField, etc.)
+│   │   ├── stream_exec.go     # Stream execution pipeline
+│   │   ├── streams.go         # SSE converters (Claude↔OpenAI)
+│   │   ├── claude/            # Claude executor
+│   │   ├── openai/            # OpenAI executor
+│   │   ├── gemini/            # Gemini executor
+│   │   ├── deepseek/          # DeepSeek (27 tests)
+│   │   └── volcengine/        # Volcengine/Doubao (32 tests)
+│   ├── image/                 # 7 image providers (GPT Image, Midjourney, etc.)
+│   ├── audio/                 # 9 audio providers (TTS/STT/Music)
+│   └── video/                 # 11 video providers
+├── docs/
+│   ├── image-generation.md    # Image integration spec
+│   ├── audio-speech.md        # Audio/speech integration spec
+│   └── video-generation.md    # Video integration spec
+├── CLAUDE.md                  # Dev conventions
+├── go.mod                     # Go 1.23, zero external deps
 └── README.md
 ```
 
@@ -247,7 +368,9 @@ Omni-link/
 1. **Choose modality**: `executor/image/`, `executor/audio/`, or `executor/video/`
 2. **Implement executor interface** (e.g. `ImageExecutor`, `AudioExecutor`, `VideoExecutor`)
 3. **Register** via `RegisterImage()`, `RegisterAudio()`, `RegisterVideo()` in `init()`
-4. **Write tests** in modality-specific directory
+4. **TTS note**: sync → wrap with `audio.NewStreamFromResult()`. For streaming → push to `AudioStream.Chunk`
+5. **Video note**: all video is async — return `*VideoTask` with status `pending`, implement `GetTask` for polling
+6. **Write tests** in modality-specific directory
 
 ---
 
