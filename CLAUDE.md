@@ -115,13 +115,20 @@ Both buffer incomplete events, handle tool calls, track usage accumulation.
 - 37 test cases covering all 12 format conversion pairs + round-trip + DetectFormat
 - Run: `go test ./translator/`
 
-**Integration tests** (`executor/deepseek_test.go`):
-Requires valid DeepSeek API key. Tests real API calls via:
+**Integration tests** (`executor/deepseek/` + `executor/volcengine/`):
+Requires valid API keys in `.env`. DeepSeek tests cover:
 - OpenAI-compatible endpoint (`/v1/chat/completions`)
 - Anthropic-compatible endpoint (`/anthropic/v1/messages`)
 - Format conversion (OpenAI→Claude→OpenAI round-trip)
-- Full executor pipeline (convert → customize → execute → convert back)
-- Run: `go test ./executor/ -run TestDeepSeek -timeout 120s`
+- Full executor pipeline, streaming, tools, thinking, error handling
+- Run: `go test ./executor/deepseek/ -timeout 120s`
+
+Volcengine (Doubao/火山引擎) tests cover:
+- OpenAI Chat + Responses API endpoints
+- Streaming (both Chat + Responses SSE passthrough)
+- Format conversion (Responses↔Chat via Plan)
+- System message, tools, params, error handling
+- Run: `go test ./executor/volcengine/ -timeout 120s`
 
 **DeepSeek API**:
 - OpenAI format: `https://api.deepseek.com/v1/chat/completions` (auth: `Authorization: Bearer`)

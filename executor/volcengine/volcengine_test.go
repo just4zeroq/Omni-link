@@ -410,6 +410,98 @@ func TestVolcConvResponsesToChat(t *testing.T) {
 }
 
 // ========================================================================
+// Plan auto-resolve — no UpstreamFormat set
+// ========================================================================
+
+func TestVolcPlanAuto(t *testing.T) {
+	key := volcKey(t)
+	e := executor.GetByProvider("volcengine")
+	info := &executor.RequestInfo{
+		InboundFormat: translator.FormatOpenAI,
+		ClientFormat:  translator.FormatOpenAI,
+		Model: volcModel,
+		ApiKey: key,
+		BaseURL: volcBase,
+		// UpstreamFormat intentionally empty — Plan should pick FormatOpenAI
+	}
+	b, _ := json.Marshal(map[string]any{
+		"model":    volcModel,
+		"messages": []map[string]any{{"role": "user", "content": "Count 1 to 3."}},
+	})
+	resp, err := executor.Request(e, info, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	mustUnmarshal(t, resp, &m)
+	choices, _ := m["choices"].([]any)
+	if len(choices) == 0 {
+		t.Fatalf("no choices: %s", string(resp))
+	}
+	t.Logf("Plan auto: %s", string(resp))
+}
+
+func TestVolcPlanAutoResponses(t *testing.T) {
+	key := volcKey(t)
+	e := executor.GetByProvider("volcengine")
+	info := &executor.RequestInfo{
+		InboundFormat: translator.FormatOpenAIResponses,
+		ClientFormat:  translator.FormatOpenAIResponses,
+		Model: volcModel,
+		ApiKey: key,
+		BaseURL: volcBase,
+		// UpstreamFormat empty — Plan should pick FormatOpenAIResponses (prefers output)
+	}
+	b, _ := json.Marshal(map[string]any{
+		"model": volcModel,
+		"input": "Count 1 to 3.",
+	})
+	resp, err := executor.Request(e, info, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	mustUnmarshal(t, resp, &m)
+	if obj, _ := m["object"].(string); obj != "response" {
+		t.Fatalf("expected response object, got: %s", string(resp))
+	}
+	t.Logf("Plan auto Responses: %s", string(resp))
+}
+
+// ========================================================================
+// Output-only conversion — send Responses in, get Chat out via Plan
+// ========================================================================
+
+func TestVolcOutputConv(t *testing.T) {
+	key := volcKey(t)
+	e := executor.GetByProvider("volcengine")
+	info := &executor.RequestInfo{
+		InboundFormat: translator.FormatOpenAIResponses,
+		ClientFormat:  translator.FormatOpenAI,
+		Model: volcModel,
+		ApiKey: key,
+		BaseURL: volcBase,
+		// Plan: In=Responses, Out=Chat → tie → prefers Chat (OpenAI)
+		// → convert request Responses→OpenAI → send to Chat endpoint → passthrough response
+	}
+	b, _ := json.Marshal(map[string]any{
+		"model": volcModel,
+		"input": "Say hello",
+	})
+	resp, err := executor.Request(e, info, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	mustUnmarshal(t, resp, &m)
+	choices, _ := m["choices"].([]any)
+	if len(choices) == 0 {
+		t.Fatalf("no choices after output conv: %s", string(resp))
+	}
+	t.Logf("Output conv Responses→Chat: success")
+}
+
+// ========================================================================
 // Error handling
 // ========================================================================
 
