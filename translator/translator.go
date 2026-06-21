@@ -5,6 +5,7 @@
 //   - OpenAI Chat Completions (openai)
 //   - Claude Messages (claude)
 //   - OpenAI Responses API (openai_responses)
+//   - Gemini (gemini)
 //
 // Convert() is the universal entry point for format conversion.
 // Conversion functions live in conv.go, types are in protocol-specific files.
@@ -94,6 +95,9 @@ func Detect(body []byte, path string) Format {
 //	Claude ↔ OpenAI
 //	OpenAI ↔ Responses API
 //	Claude  ↔ Responses API
+//	Gemini  ↔ OpenAI
+//	Claude  ↔ Gemini
+//	Responses ↔ Gemini
 //
 // Returns error for unsupported format pairs.
 func Convert(body []byte, from, to Format) ([]byte, error) {
@@ -130,19 +134,32 @@ func convertDirect(body []byte, from, to Format) ([]byte, error) {
 		return claudeToResponses(body)
 	case from == FormatOpenAIResponses && to == FormatClaude:
 		return responsesToClaude(body)
+	case from == FormatOpenAI && to == FormatGemini:
+		return openAIToGemini(body)
+	case from == FormatGemini && to == FormatOpenAI:
+		return geminiToOpenAI(body)
+	case from == FormatClaude && to == FormatGemini:
+		return claudeToGemini(body)
+	case from == FormatGemini && to == FormatClaude:
+		return geminiToClaude(body)
+	case from == FormatOpenAIResponses && to == FormatGemini:
+		return responsesToGemini(body)
+	case from == FormatGemini && to == FormatOpenAIResponses:
+		return geminiToResponses(body)
 	default:
 		return nil, fmt.Errorf("unsupported direct conversion %s → %s", from, to)
 	}
 }
 
-// DetectFormat inspects request body to determine which protocol format it uses.
+// DetectFormat inspects body to determine which protocol format it uses.
 // Accepts raw JSON bytes, unmarshals internally.
 func DetectFormat(body []byte) Format {
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return FormatOpenAI // default on parse error
 	}
-	// OpenAI Responses: has "input" (array|string) and no "messages"
+
+	// OpenAI Responses Request: has "input" and no "messages"
 	if input, ok := raw["input"]; ok && input != nil {
 		switch input.(type) {
 		case string, []any:
@@ -152,7 +169,7 @@ func DetectFormat(body []byte) Format {
 		}
 	}
 
-	// Claude: has "messages" and "max_tokens" required
+	// Messages-based formats
 	if _, ok := raw["messages"]; ok {
 		if _, hasSystem := raw["system"]; hasSystem {
 			return FormatClaude
@@ -167,7 +184,39 @@ func DetectFormat(body []byte) Format {
 				}
 			}
 		}
+		// Claude requires max_tokens; OpenAI doesn't.
+		// No temperature + max_tokens present → likely Claude.
+		if _, hasT := raw["temperature"]; !hasT {
+			if _, hasMT := raw["max_tokens"]; hasMT {
+				return FormatClaude
+			}
+		}
 		return FormatOpenAI
+	}
+
+	// Gemini request: has "contents" (array) and no "messages"/"input"
+	if _, ok := raw["contents"]; ok {
+		if _, hasMsgs := raw["messages"]; !hasMsgs {
+			if _, hasInput := raw["input"]; !hasInput {
+				return FormatGemini
+			}
+		}
+	}
+
+	// Response format detections
+	if _, ok := raw["choices"]; ok {
+		return FormatOpenAI // OpenAI Chat response
+	}
+	if _, ok := raw["candidates"]; ok {
+		return FormatGemini // Gemini response
+	}
+	if t, _ := raw["type"].(string); t == "message" {
+		if _, ok := raw["content"]; ok {
+			return FormatClaude // Claude response
+		}
+	}
+	if obj, _ := raw["object"].(string); obj == "response" {
+		return FormatOpenAIResponses // Responses API response
 	}
 
 	return FormatOpenAI // default fallback

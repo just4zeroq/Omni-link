@@ -28,11 +28,16 @@ Core conversion engine. 4 supported formats:
 | `openai_responses` | `/v1/responses` | `responses` |
 | `gemini` | (Google endpoint) | — |
 
-**Conversions supported** (request + response):
-- Claude ↔ OpenAI (bidirectional, full fidelity)
-- OpenAI ↔ OpenAI Responses (bidirectional)
-- Claude ↔ OpenAI Responses (bidirectional)
-- Gemini ↔ OpenAI (via Gemini executor)
+**Conversion matrix** (✓ = direct, · = via hub/OpenAI intermediate, — = same format):
+
+| from → to | openai | claude | responses | gemini |
+|-----------|--------|--------|-----------|--------|
+| **openai** | — | ✓ | ✓ | ✓ |
+| **claude** | ✓ | — | ✓ | ✓ |
+| **responses** | ✓ | ✓ | — | ✓ |
+| **gemini** | ✓ | ✓ | ✓ | — |
+
+All 12 pairs direct. No hub fallback needed for any format combination.
 
 **Key functions:**
 - `Convert(body, from, to)` — entry point. Falls back via OpenAI intermediate when direct path missing
@@ -84,17 +89,17 @@ Both buffer incomplete events, handle tool calls, track usage accumulation.
 ## Conventions
 
 **Code style:**
-- Package-level prefix disambiguation: `cl`/`oa`/`ds` for executor-specific helpers, no prefix for translator package
-- Interface-accepting, struct-returning for channel abstraction (channel typed as `any`)
 - Pointer-heavy for optional fields (`*int`, `*string`, `*float64`) — zero-value = unset
 - `json.RawMessage` for passthrough/raw fields (tools, tool_choice)
+- Channel typed as `any` for abstraction (never `*model.Channel` directly)
 
-**Conversion naming:**
-- `translator/conv.go`: canonical conversion functions (unprefixed, package-level)
-- `executor/claude.go`: `cl`-prefixed Claude-specific conversions (claude.go implements Claude-specific converters that the translator package doesn't cover)
-- `executor/openai.go`: `oa`-prefixed OpenAI-specific
-- `executor/deepseek.go`: `ds`-prefixed DeepSeek-specific
-- Each executor's ConvertRequest/ConvertResponse delegates to its own prefixed helpers
+**Conversion architecture (SINGLE SOURCE OF TRUTH):**
+- All format conversion logic lives in `translator/conv.go` — canonical, unprefixed
+- All executors delegate ConvertRequest/ConvertResponse to `translator.Convert(body, from, to)`
+- No conversion code duplication across executor files
+- Vendor-specific modifications go in `RequestCustomize`/`ResponseCustomize` hooks (e.g. `dsInjectThinking`, `injectStreamOptionsOpenAI`, `replaceModelField`)
+
+**Exception:** Gemini executor keeps its own conversion logic (Gemini format not yet in translator). Planned for consolidation.
 
 **Error patterns:**
 - All conversions return `fmt.Errorf("provider: direction: %w", err)` — wraps with direction context
@@ -102,12 +107,27 @@ Both buffer incomplete events, handle tool calls, track usage accumulation.
 - SSE parsing skips malformed events (continue), never fails the entire stream
 
 **Import paths:**
-`ai-platform/pkg/translator` (importing requires `translator.Format`, not `translator.Translator`)
+`github.com/just4zeroq/Omni-link/translator`
 
 ## Testing
 
-Not yet. Test files should mirror production structure: `translator/conv_test.go`, `executor/claude_test.go`, etc.
-Focus areas: round-trip conversions (OpenAI→Claude→OpenAI idempotency), edge cases (empty content, tool calls, thinking blocks), SSE streaming fidelity.
+**Unit tests** (`translator/conv_test.go`):
+- 37 test cases covering all 12 format conversion pairs + round-trip + DetectFormat
+- Run: `go test ./translator/`
+
+**Integration tests** (`executor/deepseek_test.go`):
+Requires valid DeepSeek API key. Tests real API calls via:
+- OpenAI-compatible endpoint (`/v1/chat/completions`)
+- Anthropic-compatible endpoint (`/anthropic/v1/messages`)
+- Format conversion (OpenAI→Claude→OpenAI round-trip)
+- Full executor pipeline (convert → customize → execute → convert back)
+- Run: `go test ./executor/ -run TestDeepSeek -timeout 120s`
+
+**DeepSeek API**:
+- OpenAI format: `https://api.deepseek.com/v1/chat/completions` (auth: `Authorization: Bearer`)
+- Claude format: `https://api.deepseek.com/anthropic/v1/messages` (auth: `x-api-key`)
+- `RelayMode` controls auth header and URL path selection
+- Notable: `deepseek-chat` model resolves to `deepseek-v4-flash` upstream
 
 ## Common operations
 

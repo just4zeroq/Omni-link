@@ -78,20 +78,14 @@ func (e *VolcengineExecutor) ConvertRequest(body []byte, from, to translator.For
 	if from == to {
 		return body, nil
 	}
-
-	// OpenAI-compatible endpoint — convert any non-openai to openai
-	if to == translator.FormatOpenAI && from != translator.FormatOpenAI {
-		return translator.Convert(body, from, translator.FormatOpenAI)
-	}
-
-	return nil, fmt.Errorf("volcengine: unsupported request conv %s→%s", from, to)
+	return translator.Convert(body, from, to)
 }
 
 func (e *VolcengineExecutor) ConvertResponse(body []byte, from, to translator.Format) ([]byte, error) {
 	if from == to {
 		return body, nil
 	}
-	return nil, fmt.Errorf("volcengine: unsupported response conv %s→%s", from, to)
+	return translator.Convert(body, from, to)
 }
 
 func (e *VolcengineExecutor) RequestCustomize(body []byte, info *RequestInfo) []byte {
