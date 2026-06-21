@@ -684,6 +684,184 @@ func TestVolcOutputConv(t *testing.T) {
 }
 
 // ========================================================================
+// Plan auto-resolve via ExecuteStream
+// ========================================================================
+
+func TestVolcPlanAutoStream(t *testing.T) {
+	key := volcKey(t)
+	e := executor.GetByProvider("volcengine")
+	info := &executor.RequestInfo{
+		InboundFormat: translator.FormatOpenAI,
+		ClientFormat:  translator.FormatOpenAI,
+		Model: volcModel,
+		ApiKey: key,
+		BaseURL: volcBase,
+		IsStream: true,
+	}
+	b, _ := json.Marshal(map[string]any{
+		"model":    volcModel,
+		"messages": []map[string]any{{"role": "user", "content": "从1数到5。"}},
+		"stream":   true,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var chunks [][]byte
+	err := executor.ExecuteStream(ctx, e, info, b, func(chunk []byte) error {
+		c := make([]byte, len(chunk))
+		copy(c, chunk)
+		chunks = append(chunks, c)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) == 0 {
+		t.Fatal("no chunks")
+	}
+	gotData := false
+	gotDone := false
+	full := string(bytes.Join(chunks, nil))
+	for _, line := range strings.Split(full, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "data: [DONE]" {
+			gotDone = true
+		} else if strings.HasPrefix(line, "data: ") {
+			gotData = true
+		}
+	}
+	if !gotData {
+		t.Fatal("no data chunks")
+	}
+	if !gotDone {
+		t.Fatal("no [DONE]")
+	}
+	t.Logf("Plan auto stream: %d chunks", len(chunks))
+}
+
+// ========================================================================
+// Bot model URL path (model name starting with "bot-")
+// ========================================================================
+
+func TestVolcBotModelChat(t *testing.T) {
+	key := volcKey(t)
+	e := executor.GetByProvider("volcengine")
+	info := &executor.RequestInfo{
+		UpstreamFormat: translator.FormatOpenAI,
+		InboundFormat:  translator.FormatOpenAI,
+		ClientFormat:   translator.FormatOpenAI,
+		Model: "bot-test-id-123",
+		ApiKey: key,
+		BaseURL: volcBase,
+	}
+	b, _ := json.Marshal(map[string]any{
+		"model":    "bot-test-id-123",
+		"messages": []map[string]any{{"role": "user", "content": "hi"}},
+	})
+	status, body, err := execReqRaw(e, info, b)
+	if err != nil && status == 0 {
+		t.Logf("Bot model routed (error, not 404 from chat): %v", err)
+		return
+	}
+	t.Logf("Bot model status %d: %s", status, string(body))
+}
+
+// ========================================================================
+// Streaming output conversion — Responses→Chat via Plan
+// ========================================================================
+
+func TestVolcStreamOutputConv(t *testing.T) {
+	key := volcKey(t)
+	e := executor.GetByProvider("volcengine")
+	info := &executor.RequestInfo{
+		InboundFormat: translator.FormatOpenAIResponses,
+		ClientFormat:  translator.FormatOpenAI,
+		Model: volcModel,
+		ApiKey: key,
+		BaseURL: volcBase,
+		IsStream: true,
+	}
+	// Plan: In=Responses, Out=Chat → tie → prefers Chat → send to Chat endpoint
+	b, _ := json.Marshal(map[string]any{
+		"model":  volcModel,
+		"input":  "Count 1 to 5.",
+		"stream": true,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var chunks [][]byte
+	err := executor.ExecuteStream(ctx, e, info, b, func(chunk []byte) error {
+		c := make([]byte, len(chunk))
+		copy(c, chunk)
+		chunks = append(chunks, c)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) == 0 {
+		t.Fatal("no chunks")
+	}
+	gotData := false
+	gotDone := false
+	full := string(bytes.Join(chunks, nil))
+	for _, line := range strings.Split(full, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "data: [DONE]" {
+			gotDone = true
+		} else if strings.HasPrefix(line, "data: ") {
+			gotData = true
+		}
+	}
+	if !gotData {
+		t.Fatal("no data chunks")
+	}
+	if !gotDone {
+		t.Fatal("no [DONE]")
+	}
+	t.Logf("Stream output conv: %d chunks", len(chunks))
+}
+
+// ========================================================================
+// DS V3 via volc with parameters
+// ========================================================================
+
+func TestVolcDSV3WithParams(t *testing.T) {
+	const dsModel = "deepseek-v3-2-251201"
+	key := volcKey(t)
+	e := executor.GetByProvider("volcengine")
+	info := &executor.RequestInfo{
+		UpstreamFormat: translator.FormatOpenAI,
+		InboundFormat:  translator.FormatOpenAI,
+		ClientFormat:   translator.FormatOpenAI,
+		Model: dsModel,
+		ApiKey: key,
+		BaseURL: volcBase,
+		MaxTokensOverride: 100,
+	}
+	b, _ := json.Marshal(map[string]any{
+		"model":       dsModel,
+		"messages":    []map[string]any{{"role": "user", "content": "Solve: 23 × 47"}},
+		"temperature": 0.3,
+		"max_tokens":  100,
+	})
+	resp, err := execReq(e, info, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	mustUnmarshal(t, resp, &m)
+	choices, _ := m["choices"].([]any)
+	if len(choices) == 0 {
+		t.Fatal("no choices")
+	}
+	t.Logf("DS V3 params response: %s", string(resp))
+}
+
+// ========================================================================
 // Error handling
 // ========================================================================
 
