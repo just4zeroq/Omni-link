@@ -3,21 +3,26 @@
 **Universal AI Protocol Translation Library** — Go library bridging AI API formats across text, image, audio, and video.
 
 ```go
-import "github.com/just4zeroq/Omni-link/translator"
-import textexec "github.com/just4zeroq/Omni-link/executor/text"
+import "github.com/just4zeroq/Omni-link/client"
+import "github.com/just4zeroq/Omni-link/model"
 
-// Transparent format conversion: OpenAI ↔ Claude ↔ Responses ↔ Gemini
-result, _ := translator.Convert(openaiBody, translator.FormatOpenAI, translator.FormatClaude)
+// Unified client — one object for text/image/audio/video
+c := client.NewClient(&model.Channel{
+    ProviderType: model.ProviderOpenAI,
+    ApiKey:       "sk-...",
+})
 
-// Full executor pipeline with auto-format planning
-resp, _ := textexec.Request(claudeExecutor, info, body)
+// Text chat — OpenAI format body, auto-converts to upstream protocol
+resp, _ := c.Chat(ctx, []byte(`{"model":"gpt-4","messages":[{"role":"user","content":"Hi"}]}`))
 
-// Streaming with cross-format SSE conversion
-textexec.ExecuteStream(ctx, executor, info, body, callback)
+// Image, TTS, STT, Video — all via the same client
+images, _ := c.Image(ctx, &image.TextToImageRequest{Prompt: "a cat"})
+stream, _ := c.Speak(ctx, &audio.TTSRequest{Input: "Hello"})
+task, _ := c.Video(ctx, &video.TextToVideoRequest{Prompt: "rocket launch"})
 ```
 
 [![Go Version](https://img.shields.io/badge/Go-1.23-00ADD8?style=flat-square&logo=go)](https://go.dev)
-[![Tests](https://img.shields.io/badge/Tests-96_passing-22c55e?style=flat-square)](https://github.com/just4zeroq/Omni-link)
+[![Tests](https://img.shields.io/badge/Tests-106_passing-22c55e?style=flat-square)](https://github.com/just4zeroq/Omni-link)
 [![License](https://img.shields.io/badge/License-MIT-000000?style=flat-square)](LICENSE)
 [![Zero Deps](https://img.shields.io/badge/Dependencies-Zero-6366f1?style=flat-square)](go.mod)
 
@@ -219,7 +224,7 @@ Unsupported pairs auto-fallback via OpenAI intermediate hub.
   - `Plan(in, out, endpoints)` — upstream format selection (score: input+output mismatch)
   - `RequestInfo.UpstreamFormat` — zero-value triggers Plan; 4-level override
 - Image: `executor/image` — `ImageExecutor` interface (TextToImage, ImageToImage, GetTask)
-  - Sync GPT Image, async polling for Midjourney/Qwen/Wan/Seedream
+  - Sync: GPT Image, Seedream; async polling: Midjourney, Qwen, Wan
 - Audio: `executor/audio` — `AudioExecutor` interface (TextToSpeech/*AudioStream*, SpeechToText, MusicGenerate, GetTask, ListVoices)
   - TTS returns `*AudioStream` — one chunk sync vs multi-chunk streaming
 - Video: `executor/video` — `VideoExecutor` interface (TextToVideo...+GetTask)
@@ -262,7 +267,7 @@ Unsupported pairs auto-fallback via OpenAI intermediate hub.
 | **NanoBanana** | ✅ | ❌ | Sync | Bearer | OpenAI-compatible |
 | **Z Image** | ✅ | ❌ | Sync | Bearer | OpenAI-compatible |
 | **Wan** | ✅ | ✅ | Async | Bearer | DashScope wan2.5-t2i/i2i |
-| **Seedream** | ✅ | ✅ | Sync | Bearer | Volcengine Ark, doubao-seedream models |
+| **Seedream** | ✅ | ✅ | Sync | Bearer | Volcengine Ark + fal.ai dual backend |
 | **Midjourney** | ✅ | ✅ | Async | Bearer | /v1/imagine → poll, I2I via img URL in prompt |
 
 > **Models, endpoints, auth, and Extra params per provider:** [docs/provider-reference.md](docs/provider-reference.md)
@@ -327,7 +332,7 @@ All video providers are **async** — return pending task, poll via `GetTask`:
 
 ---
 
-## Test Coverage — 96 Tests, All Passing ✅
+## Test Coverage — 106 Tests, All Passing ✅
 
 ```
 Package                    Tests     Notes
@@ -335,14 +340,16 @@ Package                    Tests     Notes
 translator/                  37      No API keys needed
 executor/text/deepseek/      27      Needs DEEPSEEK_API_KEY
 executor/text/volcengine/    32      Needs VOLC_API_KEY
+executor/image/seedream/     10      Needs VOLC_API_KEY (7 unit + 3 integration)
 ─────────────────────────────────────────────────
-Total                        96      go test ./... -count=1 -timeout 300s
+Total                       106      go test ./... -count=1 -timeout 300s
 ```
 
 ```bash
 go test ./translator/                             # 37 unit tests
 go test ./executor/text/deepseek/ -timeout 120s    # 27 integration
 go test ./executor/text/volcengine/ -timeout 180s  # 32 integration
+go test ./executor/image/seedream/ -timeout 120s   # 10 (7 unit + 3 integration)
 ```
 
 Integration tests require `.env`:
