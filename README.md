@@ -229,8 +229,10 @@ Unsupported pairs auto-fallback via OpenAI intermediate hub.
 | **NanoBanana** | ✅ | ❌ | Sync | Bearer | OpenAI-compatible |
 | **Z Image** | ✅ | ❌ | Sync | Bearer | OpenAI-compatible |
 | **Wan** | ✅ | ✅ | Async | Bearer | DashScope wan2.5-t2i/i2i |
-| **Seedream** | ✅ | ❌ | Async | Bearer | fal.ai, 5.0/4.5/4.0 |
-| **Midjourney** | ✅ | ❌ | Async | Bearer | /v1/imagine → poll |
+| **Seedream** | ✅ | ✅ | Sync | Key | fal.ai, 5.0/4.5/4.0, sync |
+| **Midjourney** | ✅ | ✅ | Async | Bearer | /v1/imagine → poll, I2I via img URL in prompt |
+
+> **Models, endpoints, auth, and Extra params per provider:** [docs/provider-reference.md](docs/provider-reference.md)
 
 ---
 
@@ -247,6 +249,8 @@ Unsupported pairs auto-fallback via OpenAI intermediate hub.
 | **PlayHT** | ✅ | ❌ | ❌ | Sync | /v2/tts/stream |
 | **Cartesia** | ✅ | ❌ | ❌ | Sync | Sonic-3 ultra-low-latency |
 | **Fish Audio** | ✅ | ❌ | ❌ | Sync | Zero-shot voice clone |
+
+> **Models, endpoints, auth, and Extra params per provider:** [docs/provider-reference.md](docs/provider-reference.md)
 
 ### TTS Streaming
 
@@ -274,17 +278,19 @@ All video providers are **async** — return pending task, poll via `GetTask`:
 
 | Executor | T2V | I2V | V2V | Extend | Edit | Notes |
 |----------|-----|-----|-----|--------|------|-------|
-| **Sora** | ✅ | ❌ | ❌ | ❌ | ✅ | OpenAI (deprecating Sep 2026) |
+| **Sora** | ✅ | ✅ | ❌ | ❌ | ❌ | OpenAI (deprecating Sep 24, 2026) |
 | **Kling** | ✅ | ✅ | ❌ | ❌ | ❌ | Kuaishou, JWT auth |
-| **Wan** | ✅ | ✅ | ❌ | ❌ | ❌ | DashScope wan2.7 |
-| **Grok** | ✅ | ❌ | ❌ | ❌ | ❌ | xAI, cheapest |
-| **Runway** | ✅ | ✅ | ❌ | ✅ | ✅ | Gen-4, X-Runway-Version |
-| **Seedance** | ✅ | ❌ | ❌ | ❌ | ❌ | ByteDance via fal.ai |
-| **Hailuo** | ✅ | ❌ | ❌ | ❌ | ❌ | MiniMax |
-| **Pika** | ✅ | ✅ | ✅ | ✅ | ✅ | fal.ai, pikaffects |
+| **Wan** | ✅ | ✅ | ❌ | ❌ | ❌ | DashScope wan2.7-t2v/i2v |
+| **Grok** | ✅ | ✅ | ❌ | ❌ | ❌ | xAI, cheapest |
+| **Runway** | ✅ | ✅ | ❌ | ❌ | ❌ | Gen-4, X-Runway-Version |
+| **Seedance** | ✅ | ❌ | ❌ | ❌ | ❌ | ByteDance via fal.ai, 2K |
+| **Hailuo** | ✅ | ✅ | ❌ | ❌ | ❌ | MiniMax |
+| **Pika** | ✅ | ✅ | ❌ | ❌ | ❌ | fal.ai, pikaffects |
 | **Luma** | ✅ | ✅ | ❌ | ❌ | ❌ | Ray3.2 via fal.ai |
 | **OmniHuman** | ❌ | ✅ | ❌ | ❌ | ❌ | Bytedance avatar (img+audio→video) |
 | **HappyHorse** | ✅ | ✅ | ❌ | ❌ | ❌ | DashScope, same infra as Wan |
+
+> **Models, endpoints, auth, and Extra params per provider:** [docs/provider-reference.md](docs/provider-reference.md)
 
 ---
 
@@ -346,7 +352,8 @@ Omni-link/
 ├── docs/
 │   ├── image-generation.md    # Image integration spec
 │   ├── audio-speech.md        # Audio/speech integration spec
-│   └── video-generation.md    # Video integration spec
+│   ├── video-generation.md    # Video integration spec
+│   └── provider-reference.md  # Per-provider models/endpoints/params
 ├── CLAUDE.md                  # Dev conventions
 ├── go.mod                     # Go 1.23, zero external deps
 └── README.md

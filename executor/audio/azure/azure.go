@@ -9,6 +9,7 @@ package azure
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -200,20 +201,15 @@ func (e *AzureExecutor) SpeechToText(req *audio.STTRequest) (*audio.STTResult, e
 	}
 
 	var azResp struct {
-		DisplayText string `json:"DisplayText"`
+		DisplayText string  `json:"DisplayText"`
 		Duration    float64 `json:"Duration,omitempty"`
 	}
-	if err := fmt.Errorf("%s", string(raw)); err != nil && azResp.DisplayText == "" {
-		// Try raw text response
+	if err := json.Unmarshal(raw, &azResp); err != nil || azResp.DisplayText == "" {
+		// Raw text response or parse failure — return as-is
 		return &audio.STTResult{Text: strings.TrimSpace(string(raw))}, nil
 	}
 
-	// JSON response
-	if azResp.DisplayText != "" {
-		return &audio.STTResult{Text: azResp.DisplayText, Duration: azResp.Duration}, nil
-	}
-
-	return &audio.STTResult{Text: strings.TrimSpace(string(raw))}, nil
+	return &audio.STTResult{Text: azResp.DisplayText, Duration: azResp.Duration}, nil
 }
 
 func (e *AzureExecutor) MusicGenerate(_ *audio.MusicRequest) (*audio.AudioTask, error) {
