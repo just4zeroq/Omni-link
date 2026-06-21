@@ -85,10 +85,14 @@ func (e *VolcengineExecutor) ConvertResponse(body []byte, from, to translator.Fo
 
 func (e *VolcengineExecutor) RequestCustomize(body []byte, info *executor.RequestInfo) []byte {
 	if info.ActualModelName != "" {
+		body = executor.ReplaceModelField(body, info.ActualModelName)
+	} else if info.Model != "" {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(body, &raw); err == nil {
-			raw["model"], _ = json.Marshal(info.ActualModelName)
-			body, _ = json.Marshal(raw)
+			if _, exists := raw["model"]; !exists {
+				raw["model"], _ = json.Marshal(info.Model)
+				body, _ = json.Marshal(raw)
+			}
 		}
 	}
 	if info.IsStream && info.UpstreamFormat == translator.FormatOpenAI {

@@ -375,6 +375,198 @@ func TestDeepSeekConvClaudeToOpenAI(t *testing.T) {
 }
 
 // ========================================================================
+// Plan auto-resolve — test executor.Request() end-to-end without UpstreamFormat
+// ========================================================================
+
+func TestDeepSeekPlanAutoOpenAI(t *testing.T) {
+	key := deepSeekKey(t)
+	info := &executor.RequestInfo{
+		InboundFormat: translator.FormatOpenAI,
+		ClientFormat:  translator.FormatOpenAI,
+		Model: deepSeekModel,
+		ApiKey: key,
+		BaseURL: deepSeekOpenAI,
+	}
+	b, _ := json.Marshal(map[string]any{
+		"model":    deepSeekModel,
+		"messages": []map[string]any{{"role": "user", "content": "Count 1 to 3."}},
+	})
+	resp, err := executor.Request(executor.GetByProvider("deepseek"), info, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	mustUnmarshal(t, resp, &m)
+	if _, ok := m["choices"]; !ok {
+		t.Fatalf("no choices (expected OpenAI format): %s", string(resp))
+	}
+	t.Logf("Plan auto OpenAI: %s", string(resp))
+}
+
+func TestDeepSeekPlanAutoClaude(t *testing.T) {
+	key := deepSeekKey(t)
+	info := &executor.RequestInfo{
+		InboundFormat: translator.FormatClaude,
+		ClientFormat:  translator.FormatClaude,
+		Model: deepSeekModel,
+		ApiKey: key,
+		BaseURL: deepSeekOpenAI,
+	}
+	b, _ := json.Marshal(map[string]any{
+		"model":      deepSeekModel,
+		"messages":   []map[string]any{{"role": "user", "content": "Count 1 to 3."}},
+		"max_tokens": 4096,
+	})
+	resp, err := executor.Request(executor.GetByProvider("deepseek"), info, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	mustUnmarshal(t, resp, &m)
+	if _, ok := m["content"]; !ok {
+		t.Fatalf("no content (expected Claude format): %s", string(resp))
+	}
+	t.Logf("Plan auto Claude: %s", string(resp))
+}
+
+func TestDeepSeekPlanAutoConv(t *testing.T) {
+	key := deepSeekKey(t)
+	info := &executor.RequestInfo{
+		InboundFormat: translator.FormatOpenAI,
+		ClientFormat:  translator.FormatClaude,
+		Model: deepSeekModel,
+		ApiKey: key,
+		BaseURL: deepSeekOpenAI,
+	}
+	// Plan: In=OpenAI, Out=Claude → candidates [OpenAI, Claude] → score 1 each → tie → prefers Claude
+	// → sends via Claude endpoint → response converted to Claude format
+	b, _ := json.Marshal(map[string]any{
+		"model":    deepSeekModel,
+		"messages": []map[string]any{{"role": "user", "content": "Hi"}},
+	})
+	resp, err := executor.Request(executor.GetByProvider("deepseek"), info, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	mustUnmarshal(t, resp, &m)
+	if _, ok := m["content"]; !ok {
+		t.Fatalf("no content (expected Claude format): %s", string(resp))
+	}
+	t.Logf("Plan auto conv OpenAI→Claude: success")
+}
+
+// ========================================================================
+// Plan auto-resolve via ExecuteStream
+// ========================================================================
+
+func TestDeepSeekPlanAutoStreamOpenAI(t *testing.T) {
+	key := deepSeekKey(t)
+	info := &executor.RequestInfo{
+		InboundFormat: translator.FormatOpenAI,
+		ClientFormat:  translator.FormatOpenAI,
+		Model: deepSeekModel,
+		ApiKey: key,
+		BaseURL: deepSeekOpenAI,
+		IsStream: true,
+	}
+	b, _ := json.Marshal(map[string]any{
+		"model":    deepSeekModel,
+		"messages": []map[string]any{{"role": "user", "content": "Count 1 to 5."}},
+		"stream":   true,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var chunks [][]byte
+	err := executor.ExecuteStream(ctx, executor.GetByProvider("deepseek"), info, b, func(chunk []byte) error {
+		c := make([]byte, len(chunk))
+		copy(c, chunk)
+		chunks = append(chunks, c)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) == 0 {
+		t.Fatal("no chunks")
+	}
+
+	gotData := false
+	gotDone := false
+	full := string(bytes.Join(chunks, nil))
+	for _, line := range strings.Split(full, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "data: [DONE]" {
+			gotDone = true
+		} else if strings.HasPrefix(line, "data: ") {
+			gotData = true
+		}
+	}
+	if !gotData {
+		t.Fatal("no data chunks")
+	}
+	if !gotDone {
+		t.Fatal("no [DONE]")
+	}
+	t.Logf("Plan auto stream OpenAI: %d chunks", len(chunks))
+}
+
+func TestDeepSeekPlanAutoStreamClaude(t *testing.T) {
+	key := deepSeekKey(t)
+	info := &executor.RequestInfo{
+		InboundFormat: translator.FormatClaude,
+		ClientFormat:  translator.FormatClaude,
+		Model: deepSeekModel,
+		ApiKey: key,
+		BaseURL: deepSeekOpenAI,
+		IsStream: true,
+	}
+	b, _ := json.Marshal(map[string]any{
+		"model":      deepSeekModel,
+		"messages":   []map[string]any{{"role": "user", "content": "Count 1 to 5."}},
+		"max_tokens": 4096, "stream": true,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var chunks [][]byte
+	err := executor.ExecuteStream(ctx, executor.GetByProvider("deepseek"), info, b, func(chunk []byte) error {
+		c := make([]byte, len(chunk))
+		copy(c, chunk)
+		chunks = append(chunks, c)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) == 0 {
+		t.Fatal("no chunks")
+	}
+
+	gotContent := false
+	gotStop := false
+	for _, c := range chunks {
+		s := string(c)
+		if strings.Contains(s, "event: content_block_delta") {
+			gotContent = true
+		}
+		if strings.Contains(s, "event: message_stop") {
+			gotStop = true
+		}
+	}
+	if !gotContent {
+		t.Fatal("no content_block_delta")
+	}
+	if !gotStop {
+		t.Fatal("no message_stop")
+	}
+	t.Logf("Plan auto stream Claude: %d chunks", len(chunks))
+}
+
+// ========================================================================
 // Output-only conversion — response format differs from upstream
 // ========================================================================
 

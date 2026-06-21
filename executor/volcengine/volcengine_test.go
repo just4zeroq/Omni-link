@@ -774,7 +774,6 @@ func TestVolcConvClaudeToOpenAI(t *testing.T) {
 }
 
 func TestVolcConvClaudeToGemini(t *testing.T) {
-	t.Skip("translator openAIToGeminiResponse passthrough — not implemented")
 	key := volcKey(t)
 	e := executor.GetByProvider("volcengine")
 	info := &executor.RequestInfo{
@@ -803,7 +802,6 @@ func TestVolcConvClaudeToGemini(t *testing.T) {
 }
 
 func TestVolcConvOpenAIToGemini(t *testing.T) {
-	t.Skip("translator openAIToGeminiResponse passthrough — not implemented")
 	key := volcKey(t)
 	e := executor.GetByProvider("volcengine")
 	info := &executor.RequestInfo{
@@ -831,7 +829,6 @@ func TestVolcConvOpenAIToGemini(t *testing.T) {
 }
 
 func TestVolcConvGeminiToOpenAI(t *testing.T) {
-	t.Skip("translator geminiToOpenAI request not implemented (passthrough)")
 	key := volcKey(t)
 	e := executor.GetByProvider("volcengine")
 	info := &executor.RequestInfo{
@@ -862,7 +859,6 @@ func TestVolcConvGeminiToOpenAI(t *testing.T) {
 }
 
 func TestVolcConvGeminiToClaude(t *testing.T) {
-	t.Skip("translator geminiToOpenAI/Claude request not implemented (passthrough)")
 	key := volcKey(t)
 	e := executor.GetByProvider("volcengine")
 	info := &executor.RequestInfo{
@@ -893,14 +889,13 @@ func TestVolcConvGeminiToClaude(t *testing.T) {
 }
 
 func TestVolcConvGeminiToGemini(t *testing.T) {
-	t.Skip("translator openAIToGeminiResponse passthrough — not implemented")
 	key := volcKey(t)
 	e := executor.GetByProvider("volcengine")
 	info := &executor.RequestInfo{
 		UpstreamFormat: translator.FormatOpenAI,
 		InboundFormat:  translator.FormatGemini,
 		ClientFormat:   translator.FormatGemini,
-		Model: volcModel,
+		ActualModelName: volcModel,
 		ApiKey: key,
 		BaseURL: volcBase,
 	}
@@ -950,7 +945,6 @@ func TestVolcConvResponsesToClaude(t *testing.T) {
 }
 
 func TestVolcConvResponsesToGemini(t *testing.T) {
-	t.Skip("translator openAIToGeminiResponse passthrough — not implemented")
 	key := volcKey(t)
 	e := executor.GetByProvider("volcengine")
 	info := &executor.RequestInfo{
